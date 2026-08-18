@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>架子鼓节奏练习生成器 · 4/4 拍三行谱</title>
+<style>
+  :root {
+    --bg: #f7f4ef;
+    --panel: #ffffff;
+    --ink: #26292e;
+    --muted: #858b93;
+    --line: #e7e1d6;
+    --accent: #e8590c;
+    --accent-soft: rgba(232, 89, 12, 0.09);
+    --accent-hover: rgba(232, 89, 12, 0.20);
+    --staff: #33373d;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .logo {
+    font-size: 30px;
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #ffe4d1, #ffd9c2);
+    border-radius: 12px;
+  }
+  .brand h1 { margin: 0; font-size: 19px; letter-spacing: 0.5px; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+    padding: 10px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    font-size: 13px; color: var(--ink);
+  }
+  .lg { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .sym { font-weight: 700; font-size: 15px; }
+  .sym.cross { color: var(--accent); }
+  .sym.dot { color: #333; }
+  .tip { color: var(--muted); margin-left: auto; font-size: 12px; }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center;
+    padding: 12px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 81px; z-index: 20;
+  }
+  .group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .toolbar label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted);
+  }
+  .toolbar input[type=number] {
+    width: 56px; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 14px; text-align: center;
+    background: #fff; color: var(--ink);
+  }
+  .toolbar input[type=number]:focus { outline: 2px solid var(--accent-hover); border-color: var(--accent); }
+  button {
+    font-family: inherit; font-size: 13.5px; font-weight: 600;
+    padding: 8px 14px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    transition: transform .05s, box-shadow .1s, background .12s, border-color .12s;
+  }
+  button:hover { background: #faf7f1; border-color: #d8d0c2; }
+  button:active { transform: translateY(1px); }
+  button.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  button.primary:hover { background: #d34f0a; border-color: #d34f0a; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .pattern-panel { padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .pattern-panel .toggle {
+    background: transparent; border: none; color: var(--accent);
+    font-weight: 700; padding: 4px 0; font-size: 13px;
+  }
+  .pattern-panel .toggle:hover { background: transparent; }
+  .pool { display: none; margin-top: 8px; }
+  .pool.open { display: block; }
+  .pool-actions { margin-bottom: 8px; }
+  .pool-actions button { padding: 4px 12px; font-size: 12px; }
+  .pool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px;
+  }
+  .pat {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
+    cursor: pointer; user-select: none; background: #fff;
+  }
+  .pat:hover { border-color: var(--accent); }
+  .pat input { accent-color: var(--accent); cursor: pointer; }
+  .pname { font-weight: 700; font-size: 13px; min-width: 30px; }
+  .pdots { display: flex; gap: 3px; margin-left: auto; }
+  .pdots i { width: 9px; height: 13px; border-radius: 2px; background: #efeae1; }
+  .pdots i.on { background: var(--accent); }
+
+  main { padding: 26px 24px 60px; }
+  .score-wrap {
+    overflow-x: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 18px 10px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  #score svg { display: block; }
+  #score svg * { pointer-events: none; }
+  #score svg rect.beat { pointer-events: all; cursor: pointer; }
+  rect.beat { fill: transparent; transition: fill .1s; }
+  rect.beat:hover { fill: var(--accent-hover); }
+  rect.beat.on { fill: var(--accent-soft); }
+  rect.playhead { fill: var(--accent); opacity: 0.14; }
+  text.plabel { font-size: 13px; font-weight: 700; fill: var(--muted); }
+  text.mnum { font-size: 10.5px; fill: var(--muted); }
+
+  /* drawer */
+  .drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.32); opacity: 0; visibility: hidden; transition: .2s; z-index: 40; }
+  .drawer-mask.open { opacity: 1; visibility: visible; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 360px; max-width: 92vw;
+    background: var(--panel); box-shadow: -8px 0 30px rgba(0,0,0,0.12);
+    transform: translateX(100%); transition: transform .24s; z-index: 41;
+    display: flex; flex-direction: column;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { padding: 18px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .drawer-head h2 { margin: 0; font-size: 16px; }
+  .drawer-head button { border: none; background: transparent; font-size: 20px; color: var(--muted); padding: 0 6px; }
+  .drawer-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+  .lib-empty { color: var(--muted); font-size: 13px; text-align: center; margin-top: 30px; }
+  .lib-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .lib-item .name { font-weight: 700; font-size: 14px; }
+  .lib-item .meta { color: var(--muted); font-size: 12px; margin: 3px 0 8px; }
+  .lib-item .acts { display: flex; gap: 8px; }
+  .lib-item .acts button { padding: 5px 12px; font-size: 12.5px; }
+
+  /* modal */
+  .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.32); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal-mask.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 14px; padding: 22px; width: 340px; max-width: 90vw; box-shadow: var(--shadow); }
+  .modal h3 { margin: 0 0 14px; font-size: 16px; }
+  .modal input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+  .modal input:focus { outline: 2px solid var(--accent-hover); border-color: var(--accent); }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 20px);
+    background: #26292e; color: #fff; padding: 10px 18px; border-radius: 10px;
+    font-size: 13.5px; opacity: 0; visibility: hidden; transition: .2s; z-index: 60;
+  }
+  .toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+
+  @media print {
+    header, .legend, .toolbar, .pattern-panel, .drawer, .drawer-mask, .modal-mask, .toast { display: none !important; }
+    body { background: #fff; }
+    main { padding: 0; }
+    .score-wrap { border: none; box-shadow: none; padding: 10px 0; max-width: none; overflow: visible; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">🥁</div>
+    <div class="brand">
+      <h1>架子鼓节奏练习生成器</h1>
+      <p>4/4 拍 · 三行五线谱（右手 / 左手 / 右脚）· 16 种基本节奏型随机组合</p>
+    </div>
+  </header>
+
+  <section class="legend">
+    <span class="lg"><span class="sym cross">✕</span> 右手（踩镲）</span>
+    <span class="lg"><span class="sym dot">●</span> 左手（军鼓）</span>
+    <span class="lg"><span class="sym dot">●</span> 右脚（底鼓）</span>
+    <span class="tip">💡 点击任意节拍位置即可开 / 关该音符，进行自定义编辑</span>
+  </section>
+
+  <div class="toolbar">
+    <div class="group">
+      <label>小节数 <input type="number" id="measureCount" min="1" max="32" value="4"></label>
+      <label>每行小节 <input type="number" id="measuresPerLine" min="1" max="8" value="4"></label>
+      <label>速度 BPM <input type="number" id="bpm" min="30" max="240" value="80"></label>
+    </div>
+    <div class="group">
+      <button id="randomBtn" class="primary">🎲 随机生成</button>
+      <button id="clearBtn">清空</button>
+      <button id="playBtn">▶ 试听</button>
+      <button id="saveBtn">💾 保存</button>
+      <button id="libraryBtn">📚 我的练习</button>
+      <button id="exportBtn">导出</button>
+      <button id="importBtn">导入</button>
+      <button id="printBtn">🖨 打印</button>
+    </div>
+  </div>
+
+  <div class="pattern-panel">
+    <button class="toggle" id="patternToggle">▸ 节奏型池设置（随机生成时允许出现的节奏型）</button>
+    <div class="pool" id="poolWrap">
+      <div class="pool-actions">
+        <button id="allOn">全选</button>
+        <button id="allOff">全不选</button>
+      </div>
+      <div class="pool-grid" id="patternPool"></div>
+    </div>
+  </div>
+
+  <main>
+    <div class="score-wrap" id="score"></div>
+  </main>
+
+  <!-- 我的练习抽屉 -->
+  <div class="drawer-mask" id="drawerMask"></div>
+  <aside class="drawer" id="libraryDrawer">
+    <div class="drawer-head"><h2>我的练习</h2><button id="closeLibrary" title="关闭">×</button></div>
+    <div class="drawer-body" id="libraryList"></div>
+  </aside>
+
+  <!-- 保存弹窗 -->
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <h3>保存练习</h3>
+      <input id="saveName" placeholder="给这个练习起个名字">
+      <div class="modal-btns">
+        <button id="cancelSave">取消</button>
+        <button id="confirmSave" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="importFile" accept=".json" style="display:none">
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 常量 ----------
+  var PARTS = ['rh', 'lh', 'rf'];
+  var PART_LABELS = { rh: '右手', lh: '左手', rf: '右脚' };
+  var NOTE_OFFSET = { rh: -8, lh: 12, rf: 28 }; // 相对五线谱顶线的 y 偏移
+
+  // 16 种基本节奏型（4 拍中哪些拍击打）
+  var PATTERNS = [
+    { name: '0',    beats: [0,0,0,0] },
+    { name: '1',    beats: [1,0,0,0] },
+    { name: '2',    beats: [0,1,0,0] },
+    { name: '3',    beats: [0,0,1,0] },
+    { name: '4',    beats: [0,0,0,1] },
+    { name: '12',   beats: [1,1,0,0] },
+    { name: '13',   beats: [1,0,1,0] },
+    { name: '14',   beats: [1,0,0,1] },
+    { name: '23',   beats: [0,1,1,0] },
+    { name: '24',   beats: [0,1,0,1] },
+    { name: '34',   beats: [0,0,1,1] },
+    { name: '123',  beats: [1,1,1,0] },
+    { name: '124',  beats: [1,1,0,1] },
+    { name: '134',  beats: [1,0,1,1] },
+    { name: '234',  beats: [0,1,1,1] },
+    { name: '1234', beats: [1,1,1,1] }
+  ];
+
+  // 绘制几何参数
+  var LINE = 8;
+  var STAFF_H = 32;
+  var TOP_PAD = 22;
+  var ROW_GAP = 22;
+  var SYS_GAP = 38;
+  var LEFT_W = 64;
+  var RIGHT_PAD = 12;
+  var MEAS_W = 132;
+  var BEAT_W = MEAS_W / 4;
+  var BLOCK_H = 3 * STAFF_H + 2 * ROW_GAP;
+  var STAFF_COLOR = '#33373d';
+
+  // ---------- 状态 ----------
+  var state = {
+    measureCount: 4,
+    measuresPerLine: 4,
+    bpm: 80,
+    score: [],
+    patternPool: PATTERNS.map(function () { return true; })
+  };
+
+  function newMeasure() {
+    return { rh: [0,0,0,0], lh: [0,0,0,0], rf: [0,0,0,0] };
+  }
+  function syncMeasureCount() {
+    while (state.score.length < state.measureCount) state.score.push(newMeasure());
+    state.score.length = state.measureCount;
+  }
+
+  // ---------- DOM ----------
+  var scoreEl = document.getElementById('score');
+  var poolEl = document.getElementById('patternPool');
+  var measureCountEl = document.getElementById('measureCount');
+  var measuresPerLineEl = document.getElementById('measuresPerLine');
+  var bpmEl = document.getElementById('bpm');
+  var playBtn = document.getElementById('playBtn');
+
+  // ---------- 渲染 ----------
+  function render() {
+    var n = state.measureCount;
+    var mpl = Math.max(1, Math.min(state.measuresPerLine, n));
+    var systems = Math.ceil(n / mpl);
+
+    var W = LEFT_W + mpl * MEAS_W + RIGHT_PAD;
+    var H = TOP_PAD + systems * BLOCK_H + (systems - 1) * SYS_GAP + 22;
+
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">';
+
+    for (var s = 0; s < systems; s++) {
+      var sysTop = TOP_PAD + s * (BLOCK_H + SYS_GAP);
+      var mStart = s * mpl;
+      var mCount = Math.min(mpl, n - mStart);
+
+      for (var p = 0; p < 3; p++) {
+        var t = sysTop + p * (STAFF_H + ROW_GAP);
+        var part = PARTS[p];
+
+        // 五线
+        var lp = '';
+        for (var li = 0; li < 5; li++) {
+          lp += 'M ' + LEFT_W + ' ' + (t + li * LINE) + ' H ' + (LEFT_W + mCount * MEAS_W) + ' ';
+        }
+        svg += '<path d="' + lp + '" stroke="' + STAFF_COLOR + '" stroke-width="1"/>';
+
+        // 打击乐谱号（两根竖线）
+        svg += '<rect x="' + (LEFT_W - 14) + '" y="' + (t + 6) + '" width="2.6" height="20" fill="' + STAFF_COLOR + '"/>';
+        svg += '<rect x="' + (LEFT_W - 9) + '" y="' + (t + 6) + '" width="2.6" height="20" fill="' + STAFF_COLOR + '"/>';
+
+        // 小节线
+        for (var k = 1; k <= mCount; k++) {
+          var bx = LEFT_W + k * MEAS_W;
+          if (k === mCount) {
+            svg += '<rect x="' + (bx - 5) + '" y="' + t + '" width="1.6" height="' + STAFF_H + '" fill="' + STAFF_COLOR + '"/>';
+            svg += '<rect x="' + (bx - 1) + '" y="' + t + '" width="2.8" height="' + STAFF_H + '" fill="' + STAFF_COLOR + '"/>';
+          } else {
+            svg += '<rect x="' + bx + '" y="' + t + '" width="1.2" height="' + STAFF_H + '" fill="' + STAFF_COLOR + '"/>';
+          }
+        }
+
+        // 音符 + 可点击单元
+        var cellY = t - 12;
+        var cellH = 52;
+        var noteY = t + NOTE_OFFSET[part];
+
+        for (var mi = mStart; mi < mStart + mCount; mi++) {
+          var mIn = mi - mStart;
+          var beats = state.score[mi][part];
+
+          // 整小节休止 → 全休止符
+          var allOff = beats.every(function (b) { return !b; });
+          if (allOff) {
+            var rc = LEFT_W + mIn * MEAS_W + MEAS_W / 2;
+            svg += '<rect x="' + (rc - 7) + '" y="' + (t + 8) + '" width="14" height="6.5" rx="1" fill="' + STAFF_COLOR + '"/>';
+          }
+
+          for (var j = 0; j < 4; j++) {
+            var bx = LEFT_W + mIn * MEAS_W + (j + 0.5) * BEAT_W;
+            svg += '<rect class="beat' + (beats[j] ? ' on' : '') + '" data-mi="' + mi + '" data-part="' + part + '" data-beat="' + j + '" x="' + (LEFT_W + mIn * MEAS_W + j * BEAT_W) + '" y="' + cellY + '" width="' + BEAT_W + '" height="' + cellH + '" rx="3"/>';
+
+            if (beats[j]) {
+              if (p === 0) {
+                // 右手：叉型符头
+                svg += '<path d="M ' + (bx - 6) + ' ' + (noteY - 6) + ' L ' + (bx + 6) + ' ' + (noteY + 6) + ' M ' + (bx - 6) + ' ' + (noteY + 6) + ' L ' + (bx + 6) + ' ' + (noteY - 6) + '" stroke="' + STAFF_COLOR + '" stroke-width="2.2" stroke-linecap="round"/>';
+              } else {
+                // 实心符头
+                svg += '<ellipse cx="' + bx + '" cy="' + noteY + '" rx="5.4" ry="4.2" fill="' + STAFF_COLOR + '" transform="rotate(-16 ' + bx + ' ' + noteY + ')"/>';
+              }
+            }
+          }
+        }
+
+        // 声部标签
+        svg += '<text class="plabel" x="22" y="' + (t + STAFF_H / 2) + '" text-anchor="middle" dominant-baseline="central">' + PART_LABELS[part] + '</text>';
+      }
+
+      // 小节编号
+      for (var m2 = mStart; m2 < mStart + mCount; m2++) {
+        var mn = m2 - mStart;
+        var mx = LEFT_W + mn * MEAS_W + MEAS_W / 2;
+        svg += '<text class="mnum" x="' + mx + '" y="' + (sysTop + BLOCK_H + 14) + '" text-anchor="middle">' + (m2 + 1) + '</text>';
+      }
+    }
+
+    svg += '<rect id="playhead" class="playhead" x="0" y="0" width="' + BEAT_W + '" height="' + BLOCK_H + '" style="display:none"/>';
+    svg += '</svg>';
+
+    scoreEl.innerHTML = svg;
+  }
+
+  // ---------- 交互 ----------
+  function toggleBeat(mi, part, beat) {
+    var m = state.score[mi];
+    if (!m) return;
+    m[part][beat] = m[part][beat] ? 0 : 1;
+    render();
+  }
+
+  scoreEl.addEventListener('click', function (e) {
+    var cell = e.target.closest ? e.target.closest('rect.beat') : null;
+    if (!cell) return;
+    toggleBeat(+cell.getAttribute('data-mi'), cell.getAttribute('data-part'), +cell.getAttribute('data-beat'));
+  });
+
+  function randomize() {
+    var allowed = [];
+    for (var i = 0; i < PATTERNS.length; i++) if (state.patternPool[i]) allowed.push(i);
+    if (!allowed.length) { toast('请至少勾选一种节奏型'); return; }
+    for (var mi = 0; mi < state.measureCount; mi++) {
+      var m = state.score[mi];
+      for (var p = 0; p < PARTS.length; p++) {
+        var idx = allowed[Math.floor(Math.random() * allowed.length)];
+        m[PARTS[p]] = PATTERNS[idx].beats.slice();
+      }
+    }
+    render();
+    toast('已随机生成 🎲');
+  }
+
+  function clearAll() {
+    for (var mi = 0; mi < state.measureCount; mi++) {
+      var m = state.score[mi];
+      for (var p = 0; p < PARTS.length; p++) m[PARTS[p]] = [0,0,0,0];
+    }
+    render();
+  }
+
+  // ---------- 节奏型池 ----------
+  function renderPool() {
+    var html = '';
+    for (var i = 0; i < PATTERNS.length; i++) {
+      var p = PATTERNS[i];
+      var dots = p.beats.map(function (b) { return '<i class="' + (b ? 'on' : '') + '"></i>'; }).join('');
+      html += '<label class="pat"><input type="checkbox" data-idx="' + i + '"' + (state.patternPool[i] ? ' checked' : '') + '>' +
+        '<span class="pname">' + p.name + '</span><span class="pdots">' + dots + '</span></label>';
+    }
+    poolEl.innerHTML = html;
+  }
+
+  poolEl.addEventListener('change', function (e) {
+    var cb = e.target;
+    if (cb && cb.getAttribute('data-idx') != null) {
+      state.patternPool[+cb.getAttribute('data-idx')] = cb.checked;
+    }
+  });
+
+  function setPoolAll(v) {
+    for (var i = 0; i < state.patternPool.length; i++) state.patternPool[i] = v;
+    renderPool();
+  }
+
+  // ---------- 试听（Web Audio 合成） ----------
+  var audioCtx = null;
+  var playing = false;
+  var schedTimer = null, rafId = null;
+  var nextTime = 0, nextBeat = 0, startCtxTime = 0, totalBeats = 0, spb = 1;
+
+  function ensureCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function noiseBuffer() {
+    if (noiseBuffer._b) return noiseBuffer._b;
+    var len = audioCtx.sampleRate * 0.5;
+    var buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    noiseBuffer._b = buf;
+    return buf;
+  }
+
+  function click(t, vol) {
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'square'; o.frequency.value = 1000;
+    g.gain.setValueAtTime(vol * 0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.05);
+  }
+  function hihat(t) {
+    var dur = 0.06;
+    var src = audioCtx.createBufferSource(); src.buffer = noiseBuffer();
+    var hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    var g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(hp); hp.connect(g); g.connect(audioCtx.destination);
+    src.start(t); src.stop(t + dur);
+  }
+  function snare(t) {
+    var dur = 0.16;
+    var src = audioCtx.createBufferSource(); src.buffer = noiseBuffer();
+    var bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+    var g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(audioCtx.destination);
+    src.start(t); src.stop(t + dur);
+
+    var o = audioCtx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(200, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.05);
+    var og = audioCtx.createGain();
+    og.gain.setValueAtTime(0.28, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    o.connect(og); og.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.12);
+  }
+  function kick(t) {
+    var dur = 0.2;
+    var o = audioCtx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.1);
+    var g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + dur);
+  }
+
+  function scheduleBeat(beatIdx, t) {
+    var mi = Math.floor(beatIdx / 4);
+    var j = beatIdx % 4;
+    var m = state.score[mi];
+    if (!m) return;
+    click(t, j === 0 ? 1.0 : 0.5);
+    if (m.rh[j]) hihat(t);
+    if (m.lh[j]) snare(t);
+    if (m.rf[j]) kick(t);
+  }
+
+  function scheduler() {
+    if (!playing) return;
+    while (nextTime < audioCtx.currentTime + 0.15) {
+      scheduleBeat(nextBeat, nextTime);
+      nextTime += spb;
+      nextBeat = (nextBeat + 1) % totalBeats;
+    }
+  }
+
+  function startPlayback() {
+    ensureCtx();
+    playing = true;
+    totalBeats = state.measureCount * 4;
+    spb = 60 / state.bpm;
+    nextTime = audioCtx.currentTime + 0.08;
+    nextBeat = 0;
+    startCtxTime = nextTime;
+    playBtn.textContent = '⏹ 停止';
+    playBtn.classList.add('primary');
+    schedTimer = setInterval(scheduler, 25);
+    rafId = requestAnimationFrame(updatePlayhead);
+  }
+
+  function stopPlayback() {
+    playing = false;
+    clearInterval(schedTimer);
+    cancelAnimationFrame(rafId);
+    var ph = document.getElementById('playhead');
+    if (ph) ph.style.display = 'none';
+    playBtn.textContent = '▶ 试听';
+    playBtn.classList.remove('primary');
+  }
+
+  function placePlayhead(beat) {
+    var ph = document.getElementById('playhead');
+    if (!ph) return;
+    var mi = Math.floor(beat / 4), j = beat % 4;
+    var mpl = Math.max(1, Math.min(state.measuresPerLine, state.measureCount));
+    var s = Math.floor(mi / mpl);
+    var mIn = mi % mpl;
+    var sysTop = TOP_PAD + s * (BLOCK_H + SYS_GAP);
+    ph.style.display = 'block';
+    ph.setAttribute('x', LEFT_W + mIn * MEAS_W + j * BEAT_W);
+    ph.setAttribute('y', sysTop - 8);
+    ph.setAttribute('height', BLOCK_H + 8);
+  }
+
+  function updatePlayhead() {
+    if (!playing) return;
+    var elapsed = audioCtx.currentTime - startCtxTime;
+    var beat = Math.floor(elapsed / spb) % totalBeats;
+    placePlayhead(beat);
+    rafId = requestAnimationFrame(updatePlayhead);
+  }
+
+  function togglePlay() {
+    if (playing) stopPlayback(); else startPlayback();
+  }
+
+  // ---------- 保存 / 加载 ----------
+  var LS_KEY = 'drum_exercises_v1';
+
+  function getLibrary() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function setLibrary(lib) { localStorage.setItem(LS_KEY, JSON.stringify(lib)); }
+
+  function renderLibrary() {
+    var lib = getLibrary();
+    var el = document.getElementById('libraryList');
+    if (!lib.length) {
+      el.innerHTML = '<div class="lib-empty">还没有保存的练习。<br>点击「保存」把当前练习存下来。</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < lib.length; i++) {
+      var it = lib[i];
+      html += '<div class="lib-item">' +
+        '<div class="name">' + esc(it.name) + '</div>' +
+        '<div class="meta">' + it.measureCount + ' 小节 · BPM ' + it.bpm + ' · ' + (it.date || '') + '</div>' +
+        '<div class="acts">' +
+          '<button data-act="load" data-id="' + it.id + '" class="primary">加载</button>' +
+          '<button data-act="del" data-id="' + it.id + '">删除</button>' +
+        '</div></div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function openSaveModal() {
+    document.getElementById('modalMask').classList.add('open');
+    var input = document.getElementById('saveName');
+    input.value = '练习 ' + (getLibrary().length + 1);
+    input.focus(); input.select();
+  }
+  function confirmSave() {
+    var name = document.getElementById('saveName').value.trim() || '未命名';
+    var lib = getLibrary();
+    lib.push({
+      id: Date.now(),
+      name: name,
+      bpm: state.bpm,
+      measureCount: state.measureCount,
+      measuresPerLine: state.measuresPerLine,
+      score: JSON.parse(JSON.stringify(state.score)),
+      date: new Date().toLocaleString('zh-CN')
+    });
+    setLibrary(lib);
+    document.getElementById('modalMask').classList.remove('open');
+    toast('已保存 ✓');
+  }
+
+  function loadExercise(id) {
+    var lib = getLibrary();
+    var it = null;
+    for (var i = 0; i < lib.length; i++) if (String(lib[i].id) === String(id)) it = lib[i];
+    if (!it) return;
+    state.measureCount = it.measureCount || 4;
+    state.measuresPerLine = it.measuresPerLine || 4;
+    state.bpm = it.bpm || 80;
+    state.score = (it.score || []).map(function (m) {
+      return {
+        rh: (m.rh || [0,0,0,0]).slice(0, 4),
+        lh: (m.lh || [0,0,0,0]).slice(0, 4),
+        rf: (m.rf || [0,0,0,0]).slice(0, 4)
+      };
+    });
+    syncMeasureCount();
+    measureCountEl.value = state.measureCount;
+    measuresPerLineEl.value = state.measuresPerLine;
+    bpmEl.value = state.bpm;
+    closeLibrary();
+    render();
+    toast('已加载「' + it.name + '」');
+  }
+
+  function deleteExercise(id) {
+    var lib = getLibrary();
+    lib = lib.filter(function (x) { return String(x.id) !== String(id); });
+    setLibrary(lib);
+    renderLibrary();
+    toast('已删除');
+  }
+
+  function exportJSON() {
+    var data = {
+      name: '架子鼓练习',
+      bpm: state.bpm,
+      measureCount: state.measureCount,
+      measuresPerLine: state.measuresPerLine,
+      score: state.score
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'drum-practice-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('已导出 JSON');
+  }
+
+  function importJSON(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var d = JSON.parse(reader.result);
+        state.measureCount = d.measureCount || 4;
+        state.measuresPerLine = d.measuresPerLine || 4;
+        state.bpm = d.bpm || 80;
+        state.score = (d.score || []).map(function (m) {
+          return {
+            rh: (m.rh || [0,0,0,0]).slice(0, 4),
+            lh: (m.lh || [0,0,0,0]).slice(0, 4),
+            rf: (m.rf || [0,0,0,0]).slice(0, 4)
+          };
+        });
+        syncMeasureCount();
+        measureCountEl.value = state.measureCount;
+        measuresPerLineEl.value = state.measuresPerLine;
+        bpmEl.value = state.bpm;
+        render();
+        toast('已导入 ✓');
+      } catch (e) {
+        toast('导入失败：文件格式不正确');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- UI 辅助 ----------
+  var toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  function openLibrary() {
+    renderLibrary();
+    document.getElementById('libraryDrawer').classList.add('open');
+    document.getElementById('drawerMask').classList.add('open');
+  }
+  function closeLibrary() {
+    document.getElementById('libraryDrawer').classList.remove('open');
+    document.getElementById('drawerMask').classList.remove('open');
+  }
+
+  // ---------- 事件绑定 ----------
+  document.getElementById('randomBtn').addEventListener('click', randomize);
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
+  document.getElementById('playBtn').addEventListener('click', togglePlay);
+  document.getElementById('saveBtn').addEventListener('click', openSaveModal);
+  document.getElementById('libraryBtn').addEventListener('click', openLibrary);
+  document.getElementById('exportBtn').addEventListener('click', exportJSON);
+  document.getElementById('printBtn').addEventListener('click', function () { window.print(); });
+  document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
+  document.getElementById('importFile').addEventListener('change', function (e) {
+    if (e.target.files && e.target.files[0]) importJSON(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  document.getElementById('closeLibrary').addEventListener('click', closeLibrary);
+  document.getElementById('drawerMask').addEventListener('click', closeLibrary);
+  document.getElementById('cancelSave').addEventListener('click', function () { document.getElementById('modalMask').classList.remove('open'); });
+  document.getElementById('confirmSave').addEventListener('click', confirmSave);
+  document.getElementById('saveName').addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmSave(); });
+  document.getElementById('modalMask').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
+
+  document.getElementById('libraryList').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button[data-act]') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-id');
+    if (b.getAttribute('data-act') === 'load') loadExercise(id);
+    else deleteExercise(id);
+  });
+
+  document.getElementById('patternToggle').addEventListener('click', function () {
+    var w = document.getElementById('poolWrap');
+    var open = w.classList.toggle('open');
+    this.textContent = (open ? '▾' : '▸') + ' 节奏型池设置（随机生成时允许出现的节奏型）';
+  });
+  document.getElementById('allOn').addEventListener('click', function () { setPoolAll(true); });
+  document.getElementById('allOff').addEventListener('click', function () { setPoolAll(false); });
+
+  measureCountEl.addEventListener('change', function () {
+    state.measureCount = Math.max(1, Math.min(32, +this.value || 4));
+    this.value = state.measureCount;
+    syncMeasureCount();
+    render();
+  });
+  measuresPerLineEl.addEventListener('change', function () {
+    state.measuresPerLine = Math.max(1, Math.min(8, +this.value || 4));
+    this.value = state.measuresPerLine;
+    render();
+  });
+  bpmEl.addEventListener('change', function () {
+    state.bpm = Math.max(30, Math.min(240, +this.value || 80));
+    this.value = state.bpm;
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); randomize(); }
+    else if (e.key === 'c' || e.key === 'C') { e.preventDefault(); clearAll(); }
+  });
+
+  // ---------- 初始化 ----------
+  syncMeasureCount();
+  renderPool();
+  randomize();
+  render();
+})();
+</script>
+</body>
+</html>

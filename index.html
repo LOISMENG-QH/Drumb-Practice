@@ -216,6 +216,7 @@
       <button id="exportBtn">导出</button>
       <button id="importBtn">导入</button>
       <button id="printBtn">🖨 打印</button>
+      <button id="syncBtn">☁️ 云端同步</button>
     </div>
   </div>
 
@@ -250,6 +251,24 @@
         <button id="cancelSave">取消</button>
         <button id="confirmSave" class="primary">保存</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 云端同步弹窗 -->
+  <div class="modal-mask" id="syncMask">
+    <div class="modal" style="width: 400px;">
+      <h3>☁️ 云端同步（GitHub Gist）</h3>
+      <div id="syncStatus" style="font-size:13px;color:var(--muted);margin-bottom:10px;">⚪ 未绑定</div>
+      <input id="gistToken" placeholder="粘贴你的 GitHub Token（ghp_...）">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button id="gistConnect" class="primary">连接 / 绑定</button>
+        <button id="gistUpload">⬆️ 上传到云端</button>
+        <button id="gistDownload">⬇️ 从云端拉取</button>
+      </div>
+      <div style="margin-top:14px;">
+        <button id="gistUnbind" class="ghost" style="color:#c0392b;padding:4px 0;">解除绑定</button>
+      </div>
+      <div class="modal-btns"><button id="syncClose">关闭</button></div>
     </div>
   </div>
 
@@ -673,6 +692,7 @@
     setLibrary(lib);
     document.getElementById('modalMask').classList.remove('open');
     toast('已保存 ✓');
+    if (isBound()) gistUpload();
   }
 
   function loadExercise(id) {
@@ -705,6 +725,7 @@
     setLibrary(lib);
     renderLibrary();
     toast('已删除');
+    if (isBound()) gistUpload();
   }
 
   function exportJSON() {
@@ -755,6 +776,137 @@
     reader.readAsText(file);
   }
 
+  // ---------- 云端同步（GitHub Gist） ----------
+  var GIST_TOKEN_KEY = 'drum_gist_token';
+  var GIST_ID_KEY = 'drum_gist_id';
+  var GIST_FILENAME = 'drum-practice.json';
+  var GIST_DESC = 'drum-practice-sync';
+
+  function getToken() { return localStorage.getItem(GIST_TOKEN_KEY) || ''; }
+  function getGistId() { return localStorage.getItem(GIST_ID_KEY) || ''; }
+  function isBound() { return !!(getToken() && getGistId()); }
+
+  function gistHeaders() {
+    return { 'Authorization': 'token ' + getToken(), 'Accept': 'application/vnd.github+json' };
+  }
+
+  function handleResp(resp) {
+    if (!resp.ok) {
+      return resp.json().catch(function () { return {}; }).then(function (j) {
+        throw new Error((j && j.message) || ('HTTP ' + resp.status));
+      });
+    }
+    return resp.json();
+  }
+
+  function serializeLibrary() {
+    return JSON.stringify({ app: 'drum-practice', v: 1, updated: Date.now(), library: getLibrary() });
+  }
+
+  function updateSyncStatus() {
+    var el = document.getElementById('syncStatus');
+    if (!el) return;
+    if (isBound()) el.textContent = '✅ 已绑定，保存会自动同步到云端';
+    else if (getToken()) el.textContent = '🟡 已保存 Token，尚未创建云端数据';
+    else el.textContent = '⚪ 未绑定';
+  }
+
+  function gistConnect() {
+    var input = document.getElementById('gistToken').value.trim();
+    var token = input || getToken();
+    if (!token) { toast('请粘贴 Token'); return; }
+    if (input) localStorage.setItem(GIST_TOKEN_KEY, token);
+    fetch('https://api.github.com/gists?per_page=100', { headers: gistHeaders() })
+      .then(handleResp)
+      .then(function (list) {
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].description === GIST_DESC) {
+            localStorage.setItem(GIST_ID_KEY, list[i].id);
+            break;
+          }
+        }
+        updateSyncStatus();
+        if (getGistId()) toast('已连接云端 ✓（点「从云端拉取」同步）');
+        else toast('已连接 ✓（首次请点「上传到云端」创建）');
+      })
+      .catch(function (e) {
+        toast('连接失败：' + e.message);
+      });
+  }
+
+  function gistUpload() {
+    if (!getToken()) { toast('请先输入 Token 并连接'); return; }
+    var content = serializeLibrary();
+    var files = {};
+    files[GIST_FILENAME] = { content: content };
+    var id = getGistId();
+    var req;
+    if (id) {
+      req = fetch('https://api.github.com/gists/' + id, {
+        method: 'PATCH',
+        headers: gistHeaders(),
+        body: JSON.stringify({ files: files })
+      });
+    } else {
+      req = fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: gistHeaders(),
+        body: JSON.stringify({ description: GIST_DESC, public: false, files: files })
+      });
+    }
+    req.then(handleResp).then(function (json) {
+      if (!id && json.id) localStorage.setItem(GIST_ID_KEY, json.id);
+      updateSyncStatus();
+      toast('已上传到云端 ✓');
+    }).catch(function (e) {
+      toast('上传失败：' + e.message);
+    });
+  }
+
+  function gistDownload() {
+    if (!getToken()) { toast('请先输入 Token 并连接'); return; }
+    var id = getGistId();
+    if (!id) { toast('尚未绑定云端，请先连接或上传'); return; }
+    fetch('https://api.github.com/gists/' + id, { headers: gistHeaders() })
+      .then(handleResp)
+      .then(function (json) {
+        var f = json.files && json.files[GIST_FILENAME];
+        if (!f || !f.content) { toast('云端暂无数据'); return; }
+        var cloud = JSON.parse(f.content).library || [];
+        var lib = getLibrary();
+        var map = {};
+        var i;
+        for (i = 0; i < lib.length; i++) map[String(lib[i].id)] = lib[i];
+        for (i = 0; i < cloud.length; i++) map[String(cloud[i].id)] = cloud[i];
+        var merged = [];
+        for (var k in map) if (map.hasOwnProperty(k)) merged.push(map[k]);
+        merged.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+        setLibrary(merged);
+        renderLibrary();
+        toast('已从云端同步 ✓（' + merged.length + ' 条练习）');
+      })
+      .catch(function (e) {
+        toast('拉取失败：' + e.message);
+      });
+  }
+
+  function gistUnbind() {
+    localStorage.removeItem(GIST_TOKEN_KEY);
+    localStorage.removeItem(GIST_ID_KEY);
+    document.getElementById('gistToken').value = '';
+    updateSyncStatus();
+    toast('已解除绑定');
+  }
+
+  function openSync() {
+    document.getElementById('syncMask').classList.add('open');
+    var t = document.getElementById('gistToken');
+    t.value = '';
+    t.placeholder = getToken() ? '已绑定 Token，留空则不修改' : '粘贴你的 GitHub Token（ghp_...）';
+    updateSyncStatus();
+  }
+  function closeSync() { document.getElementById('syncMask').classList.remove('open'); }
+
   // ---------- UI 辅助 ----------
   var toastTimer = null;
   function toast(msg) {
@@ -783,6 +935,13 @@
   document.getElementById('libraryBtn').addEventListener('click', openLibrary);
   document.getElementById('exportBtn').addEventListener('click', exportJSON);
   document.getElementById('printBtn').addEventListener('click', function () { window.print(); });
+  document.getElementById('syncBtn').addEventListener('click', openSync);
+  document.getElementById('syncClose').addEventListener('click', closeSync);
+  document.getElementById('gistConnect').addEventListener('click', gistConnect);
+  document.getElementById('gistUpload').addEventListener('click', gistUpload);
+  document.getElementById('gistDownload').addEventListener('click', gistDownload);
+  document.getElementById('gistUnbind').addEventListener('click', gistUnbind);
+  document.getElementById('syncMask').addEventListener('click', function (e) { if (e.target === this) closeSync(); });
   document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
   document.getElementById('importFile').addEventListener('change', function (e) {
     if (e.target.files && e.target.files[0]) importJSON(e.target.files[0]);
@@ -841,6 +1000,7 @@
   renderPool();
   randomize();
   render();
+  if (isBound()) gistDownload();
 })();
 </script>
 </body>

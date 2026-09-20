@@ -169,6 +169,8 @@
   rect.beat { fill: transparent; transition: fill .1s; }
   rect.beat:hover { fill: var(--accent-hover); }
   rect.beat.on { fill: var(--accent-soft); }
+  rect.mhl { fill: transparent; }
+  rect.mhl.on { fill: rgba(232, 89, 12, 0.13); }
   rect.playhead { fill: var(--accent); opacity: 0.14; }
   text.plabel { font-size: 13px; font-weight: 700; fill: var(--muted); }
   text.mnum { font-size: 10.5px; fill: var(--muted); }
@@ -283,13 +285,16 @@
             <option value="8">8 拍</option>
           </select>
         </label>
-        <label>节奏来源
+        <label>内容
           <select id="coachSource">
-            <option value="score" selected>按谱面顺序</option>
-            <option value="random">随机抽取</option>
+            <option value="random" selected>随机生成</option>
+            <option value="score">用当前谱面</option>
           </select>
         </label>
         <label><input type="checkbox" id="hideAnswer"> 🙈 隐藏谱面</label>
+        <label><input type="checkbox" id="sayRest" checked> 报「空」拍</label>
+        <label>语音 <select id="ttsVoice" style="max-width:230px;"><option value="">自动（优先普通话）</option></select></label>
+        <button id="ttsTest">🔊 试听</button>
         <button id="coachBtn" class="primary">🎤 开始报读</button>
         <span id="coachHint" style="font-size:12.5px;color:var(--muted);"></span>
       </div>
@@ -483,6 +488,10 @@
         var mIn = mi - mStart;
         var mX = LEFT_W + mIn * MEAS_W;
         var m = state.score[mi];
+
+        // 报读高亮底块
+        svg += '<rect class="mhl" data-mi="' + mi + '" x="' + mX + '" y="' + (top - 12) +
+               '" width="' + MEAS_W + '" height="' + (STAFF_H + 18) + '" rx="4"/>';
 
         for (var b = 0; b < 4; b++) {
           var bX = mX + b * BEAT_W;
@@ -698,21 +707,70 @@
   var TTS = window.speechSynthesis || null;
   var zhVoice = null;
 
-  function pickZhVoice() {
-    if (!TTS) return null;
-    var vs = [];
-    try { vs = TTS.getVoices() || []; } catch (e) { return null; }
-    for (var i = 0; i < vs.length; i++) {
-      var l = (vs[i].lang || '').toLowerCase().replace('_', '-');
-      if (l.indexOf('zh') === 0) return vs[i];
-    }
-    return null;
+  var VOICE_KEY = 'rhythm_tts_voice_v1';
+
+  function allVoices() {
+    if (!TTS) return [];
+    try { return TTS.getVoices() || []; } catch (e) { return []; }
   }
+
+  // 打分选普通话：zh-CN / cmn-Hans 加分，粤语(zh-HK/yue)、台湾腔(zh-TW) 重罚
+  function voiceScore(v) {
+    var l = (v.lang || '').toLowerCase().replace(/_/g, '-');
+    var n = (v.name || '').toLowerCase();
+    if (!/^(zh|cmn|yue)/.test(l)) return -999;   // 不是中文语音
+    var s = 50;
+    if (/hk|yue/.test(l)) s -= 80;                // 粤语
+    else if (/tw|hant/.test(l)) s -= 40;          // 台湾
+    else if (/cn|hans/.test(l)) s += 60;          // 大陆普通话
+    if (/tingting|ting-ting|婷婷|mandarin|putonghua|普通话/.test(n)) s += 45;
+    if (/sinji|sin-ji|meijia|mei-jia|cantonese|粤/.test(n)) s -= 70;
+    return s;
+  }
+
+  function zhVoices() {
+    return allVoices().filter(function (v) { return voiceScore(v) > -100; })
+      .sort(function (a, b) { return voiceScore(b) - voiceScore(a); });
+  }
+
+  function pickZhVoice() {
+    var list = zhVoices();
+    return list.length ? list[0] : null;
+  }
+
+  // 优先用户在下拉框里指定的语音，其次自动挑普通话
+  function resolveVoice() {
+    var sel = document.getElementById('ttsVoice');
+    var uri = (sel && sel.value) || localStorage.getItem(VOICE_KEY) || '';
+    if (uri) {
+      var vs = allVoices();
+      for (var i = 0; i < vs.length; i++) if (vs[i].voiceURI === uri) return vs[i];
+    }
+    return zhVoice || pickZhVoice();
+  }
+
+  function fillVoiceSelect() {
+    var sel = document.getElementById('ttsVoice');
+    if (!sel) return;
+    var list = zhVoices();
+    var html = '<option value="">自动（优先普通话）</option>';
+    for (var i = 0; i < list.length; i++) {
+      var v = list[i];
+      var l = (v.lang || '').toLowerCase().replace(/_/g, '-');
+      var tag = /hk|yue/.test(l) ? '（粤语）' : (/tw|hant/.test(l) ? '（台）' : (/cn|hans/.test(l) ? '（普通话）' : ''));
+      html += '<option value="' + esc(v.voiceURI) + '">' + esc(v.name + ' · ' + v.lang + tag) + '</option>';
+    }
+    var saved = localStorage.getItem(VOICE_KEY) || '';
+    sel.innerHTML = html;
+    if (saved) sel.value = saved;
+  }
+
   function initVoices() {
     if (!TTS) return;
     zhVoice = pickZhVoice();
+    fillVoiceSelect();
     try {
-      TTS.onvoiceschanged = function () { if (!zhVoice) zhVoice = pickZhVoice(); };
+      TTS.onvoiceschanged = function () { zhVoice = pickZhVoice(); fillVoiceSelect(); };
     } catch (e) {}
   }
   initVoices();
@@ -732,10 +790,11 @@
     if (!ttsOK()) { setTimeout(done, 700); return; }
     var u = new SpeechSynthesisUtterance(text);
     u.lang = 'zh-CN';
-    if (zhVoice) u.voice = zhVoice;
+    var v = resolveVoice();
+    if (v) u.voice = v;
     u.rate = 1; u.pitch = 1; u.volume = 1;
     var finished = false;
-    var guard = setTimeout(finish, 900 + String(text).length * 520);
+    var guard = setTimeout(finish, 1400 + String(text).length * 450);
     function finish() {
       if (finished) return;
       finished = true;
@@ -758,6 +817,8 @@
   var restBeatsEl = document.getElementById('restBeats');
   var coachSourceEl = document.getElementById('coachSource');
   var hideAnswerEl = document.getElementById('hideAnswer');
+  var sayRestEl = document.getElementById('sayRest');
+  var ttsVoiceEl = document.getElementById('ttsVoice');
 
   function renderDots(n) {
     var h = '';
@@ -770,29 +831,68 @@
   }
   function updateHint() {
     var el = document.getElementById('coachHint');
-    if (el) el.textContent = '一轮 = 报中文名 → 空 ' + (restBeatsEl.value || 4) + ' 拍跟打（节拍器可开关）';
+    if (el) {
+      el.textContent = '一轮 = 报 4 拍内容（上方「内容占 ' + state.fillBeats + ' 拍」）→ 空 ' +
+        (restBeatsEl.value || 4) + ' 拍跟打';
+    }
   }
 
-  // 生成报读序列：按谱面顺序（循环补足）或随机抽取
-  function coachSequence() {
-    var n = Math.max(1, Math.min(64, +roundCountEl.value || 8));
+  // 随机一个小节：按「内容占 N 拍」的布局，每个内容拍抽一个节奏型
+  function randomMeasure() {
     var pool = PATTERNS.filter(function (p, i) { return state.patternPool[i]; });
     if (!pool.length) pool = PATTERNS.slice();
-    var out = [];
+    var layout = LAYOUTS[state.fillBeats] || LAYOUTS[4];
+    var beats = [null, null, null, null];
+    for (var b = 0; b < 4; b++) {
+      beats[b] = layout[b] ? pool[Math.floor(Math.random() * pool.length)].key : null;
+    }
+    return beats;
+  }
+
+  // 报读序列：每一轮 = 一个完整 4 拍小节（其中 2/3/4 拍有内容）
+  function coachSequence() {
+    var n = Math.max(1, Math.min(64, +roundCountEl.value || 8));
     if (coachSourceEl.value === 'random') {
-      for (var i = 0; i < n; i++) out.push(pool[Math.floor(Math.random() * pool.length)].key);
-      return out;
+      // 随机生成：直接把谱面重排成 n 个小节，谱面即答案
+      state.measureCount = n;
+      state.score = [];
+      for (var i = 0; i < n; i++) state.score.push({ beats: randomMeasure() });
+      measureCountEl.value = n;
+      render();
+      return state.score.map(function (m) { return m.beats.slice(); });
     }
-    state.score.forEach(function (m) {
-      m.beats.forEach(function (k) { if (k) out.push(k); });
-    });
-    if (!out.length) {
-      for (var j = 0; j < n; j++) out.push(pool[Math.floor(Math.random() * pool.length)].key);
-      return out;
+    // 用当前谱面：跳过全空小节，不足则循环
+    var src = state.score
+      .map(function (m) { return m.beats.slice(); })
+      .filter(function (b) { return b.some(function (k) { return !!k; }); });
+    if (!src.length) {
+      src = [];
+      for (var j = 0; j < n; j++) src.push(randomMeasure());
+      return src;
     }
-    var base = out.slice();
-    while (out.length < n) out = out.concat(base);
+    var out = [];
+    while (out.length < n) out = out.concat(src);
     return out.slice(0, n);
+  }
+
+  // 一轮的报读文本（中文，逗号分隔，空拍可选念「空」）
+  function roundSpeakText(beats, sep) {
+    var parts = [];
+    for (var b = 0; b < 4; b++) {
+      var p = beats[b] ? PAT_BY_KEY[beats[b]] : null;
+      if (p) parts.push(p.name);
+      else if (sayRestEl.checked) parts.push('空');
+    }
+    return parts.join(sep || '，');
+  }
+
+  // 高亮当前正在报读 / 跟打的小节
+  function highlightMeasure(mi) {
+    var els = coachScoreEl.querySelectorAll('rect.mhl');
+    for (var i = 0; i < els.length; i++) {
+      var on = (+els[i].getAttribute('data-mi') === mi);
+      els[i].setAttribute('class', on ? 'mhl on' : 'mhl');
+    }
   }
 
   function startCoach() {
@@ -822,6 +922,7 @@
     coachWord.textContent = msg || '准备就绪';
     coachWord.classList.remove('speak');
     clearDots();
+    highlightMeasure(-1);
   }
 
   function nextRound() {
@@ -831,14 +932,14 @@
       toast('报读训练完成 ✓');
       return;
     }
-    var p = PAT_BY_KEY[coach.seq[coach.idx]];
-    var name = p ? p.name : '空';
+    var beats = coach.seq[coach.idx];
     coachRound.textContent = '第 ' + (coach.idx + 1) + ' / ' + coach.seq.length + ' 轮';
-    coachWord.textContent = '🎤 ' + name;
+    coachWord.textContent = roundSpeakText(beats, ' · ');
     coachWord.classList.add('speak');
+    highlightMeasure(coach.idx);
     var dots = coachDots.querySelectorAll('i');
     for (var i = 0; i < dots.length; i++) dots[i].classList.remove('on');
-    speakZh(name, function () {
+    speakZh(roundSpeakText(beats, '，'), function () {
       if (!coach.on) return;
       restPhase();
     });
@@ -1190,6 +1291,16 @@
     if (coach.on) stopCoach('已停止'); else startCoach();
   });
   restBeatsEl.addEventListener('change', function () { renderDots(+this.value || 4); updateHint(); });
+  ttsVoiceEl.addEventListener('change', function () {
+    try { localStorage.setItem(VOICE_KEY, this.value || ''); } catch (e) {}
+    if (this.value) toast('已切换语音 ✓');
+  });
+  document.getElementById('ttsTest').addEventListener('click', function () {
+    unlockTTS();
+    var m = randomMeasure();
+    speakZh(roundSpeakText(m, '，'), function () {});
+    toast('试听：' + roundSpeakText(m, ' · '));
+  });
   document.getElementById('coachToggle').addEventListener('click', function () {
     var w = document.getElementById('coachWrap');
     var open = w.classList.toggle('open');
@@ -1245,6 +1356,7 @@
     applyLayoutToScore();
     applyFillBeats();
     render();
+    updateHint();
   });
 
   document.addEventListener('keydown', function (e) {
@@ -1263,7 +1375,10 @@
   randomize();
   renderDots(+restBeatsEl.value || 4);
   updateHint();
-  try { TTS && TTS.getVoices && TTS.getVoices(); } catch (e) {}
+  // 语音列表在部分浏览器是异步加载的，多刷几次
+  [200, 800, 2000].forEach(function (d) {
+    setTimeout(function () { fillVoiceSelect(); }, d);
+  });
   if (isBound()) gistDownload();
 })();
 </script>

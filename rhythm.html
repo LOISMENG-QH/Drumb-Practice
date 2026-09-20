@@ -105,11 +105,63 @@
   .pdots i { width: 9px; height: 13px; border-radius: 2px; background: #efeae1; }
   .pdots i.on { background: var(--accent); }
 
+  /* ---- 报读训练 ---- */
+  .coach-panel { padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .coach-panel .toggle {
+    background: transparent; border: none; color: var(--accent);
+    font-weight: 700; padding: 4px 0; font-size: 13px;
+  }
+  .coach-panel .toggle:hover { background: transparent; }
+  .coach-body { display: none; margin-top: 10px; }
+  .coach-body.open { display: block; }
+  .coach-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  .coach-controls label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted);
+  }
+  .coach-controls input[type=number] {
+    width: 56px; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 14px; text-align: center; background: #fff; color: var(--ink);
+  }
+  .coach-controls select {
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13.5px; background: #fff; color: var(--ink); font-family: inherit;
+  }
+  .coach-controls input[type=number]:focus, .coach-controls select:focus {
+    outline: 2px solid var(--accent-hover); border-color: var(--accent);
+  }
+  .coach-controls input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .coach-stage {
+    margin-top: 12px; border: 1px solid var(--line); border-radius: 12px;
+    background: linear-gradient(180deg, #fffaf5, #fff);
+    padding: 14px 16px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .coach-stage.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .coach-round { font-size: 12.5px; color: var(--muted); font-weight: 700; min-width: 88px; }
+  .coach-word {
+    font-size: 27px; font-weight: 800; letter-spacing: 1px;
+    min-width: 200px; color: var(--ink); line-height: 1.2;
+  }
+  .coach-word.speak { color: var(--accent); }
+  .coach-dots { display: flex; gap: 8px; margin-left: auto; }
+  .coach-dots i {
+    width: 14px; height: 14px; border-radius: 50%; background: #efeae1;
+    transition: background .08s, transform .08s;
+  }
+  .coach-dots i.on { background: var(--accent); transform: scale(1.3); }
+
   main { padding: 26px 24px 60px; }
   .score-wrap {
     overflow-x: auto; background: var(--panel); border: 1px solid var(--line);
     border-radius: 14px; box-shadow: var(--shadow); padding: 18px 10px;
-    max-width: 1180px; margin: 0 auto;
+    max-width: 1180px; margin: 0 auto; position: relative;
+  }
+  .score-wrap.veiled::after {
+    content: "🙈 训练中 · 答案已隐藏";
+    position: absolute; inset: 0; z-index: 5; pointer-events: none;
+    background: rgba(247,244,239,0.95); border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: var(--muted);
   }
   #score svg { display: block; }
   #score svg * { pointer-events: none; }
@@ -158,7 +210,7 @@
   .toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
 
   @media print {
-    header, .legend, .toolbar, .pattern-panel, .drawer, .drawer-mask, .modal-mask, .toast { display: none !important; }
+    header, .legend, .toolbar, .pattern-panel, .coach-panel, .drawer, .drawer-mask, .modal-mask, .toast { display: none !important; }
     body { background: #fff; }
     main { padding: 0; }
     .score-wrap { border: none; box-shadow: none; padding: 10px 0; max-width: none; overflow: visible; }
@@ -214,6 +266,38 @@
         <button id="allOff">全不选</button>
       </div>
       <div class="pool-grid" id="patternPool"></div>
+    </div>
+  </div>
+
+  <div class="coach-panel">
+    <button class="toggle" id="coachToggle">▾ 报读训练（只报中文 → 空拍跟打）</button>
+    <div class="coach-body open" id="coachWrap">
+      <div class="coach-controls">
+        <label>轮数 <input type="number" id="roundCount" min="1" max="64" value="8"></label>
+        <label>每轮空
+          <select id="restBeats">
+            <option value="2">2 拍</option>
+            <option value="3">3 拍</option>
+            <option value="4" selected>4 拍</option>
+            <option value="6">6 拍</option>
+            <option value="8">8 拍</option>
+          </select>
+        </label>
+        <label>节奏来源
+          <select id="coachSource">
+            <option value="score" selected>按谱面顺序</option>
+            <option value="random">随机抽取</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="hideAnswer"> 🙈 隐藏谱面</label>
+        <button id="coachBtn" class="primary">🎤 开始报读</button>
+        <span id="coachHint" style="font-size:12.5px;color:var(--muted);"></span>
+      </div>
+      <div class="coach-stage" id="coachStage">
+        <div class="coach-round" id="coachRound">— / —</div>
+        <div class="coach-word" id="coachWord">准备就绪</div>
+        <div class="coach-dots" id="coachDots"><i></i><i></i><i></i><i></i></div>
+      </div>
     </div>
   </div>
 
@@ -605,7 +689,192 @@
     rafId = requestAnimationFrame(updatePlayhead);
   }
 
-  function togglePlay() { if (playing) stopPlayback(); else startPlayback(); }
+  function togglePlay() {
+    if (coach.on) stopCoach('已停止');
+    if (playing) stopPlayback(); else startPlayback();
+  }
+
+  // ---------- 报读训练（语音报中文名 → 空拍跟打）----------
+  var TTS = window.speechSynthesis || null;
+  var zhVoice = null;
+
+  function pickZhVoice() {
+    if (!TTS) return null;
+    var vs = [];
+    try { vs = TTS.getVoices() || []; } catch (e) { return null; }
+    for (var i = 0; i < vs.length; i++) {
+      var l = (vs[i].lang || '').toLowerCase().replace('_', '-');
+      if (l.indexOf('zh') === 0) return vs[i];
+    }
+    return null;
+  }
+  function initVoices() {
+    if (!TTS) return;
+    zhVoice = pickZhVoice();
+    try {
+      TTS.onvoiceschanged = function () { if (!zhVoice) zhVoice = pickZhVoice(); };
+    } catch (e) {}
+  }
+  initVoices();
+  function ttsOK() { return !!TTS && typeof window.SpeechSynthesisUtterance === 'function'; }
+
+  // iOS/Safari：首次必须在用户手势内 speak 一次，后续异步播报才生效
+  function unlockTTS() {
+    if (!ttsOK()) return;
+    try {
+      var u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0; u.lang = 'zh-CN';
+      TTS.speak(u);
+    } catch (e) {}
+  }
+
+  function speakZh(text, done) {
+    if (!ttsOK()) { setTimeout(done, 700); return; }
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN';
+    if (zhVoice) u.voice = zhVoice;
+    u.rate = 1; u.pitch = 1; u.volume = 1;
+    var finished = false;
+    var guard = setTimeout(finish, 900 + String(text).length * 520);
+    function finish() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(guard);
+      try { done(); } catch (e) {}
+    }
+    u.onend = finish;
+    u.onerror = finish;
+    try { TTS.speak(u); } catch (e) { finish(); }
+  }
+
+  var coach = { on: false, seq: [], idx: 0, raf: null };
+  var coachScoreEl = document.getElementById('score');
+  var coachBtn = document.getElementById('coachBtn');
+  var coachStage = document.getElementById('coachStage');
+  var coachRound = document.getElementById('coachRound');
+  var coachWord = document.getElementById('coachWord');
+  var coachDots = document.getElementById('coachDots');
+  var roundCountEl = document.getElementById('roundCount');
+  var restBeatsEl = document.getElementById('restBeats');
+  var coachSourceEl = document.getElementById('coachSource');
+  var hideAnswerEl = document.getElementById('hideAnswer');
+
+  function renderDots(n) {
+    var h = '';
+    for (var i = 0; i < n; i++) h += '<i></i>';
+    coachDots.innerHTML = h;
+  }
+  function clearDots() {
+    var d = coachDots.querySelectorAll('i');
+    for (var i = 0; i < d.length; i++) d[i].classList.remove('on');
+  }
+  function updateHint() {
+    var el = document.getElementById('coachHint');
+    if (el) el.textContent = '一轮 = 报中文名 → 空 ' + (restBeatsEl.value || 4) + ' 拍跟打（节拍器可开关）';
+  }
+
+  // 生成报读序列：按谱面顺序（循环补足）或随机抽取
+  function coachSequence() {
+    var n = Math.max(1, Math.min(64, +roundCountEl.value || 8));
+    var pool = PATTERNS.filter(function (p, i) { return state.patternPool[i]; });
+    if (!pool.length) pool = PATTERNS.slice();
+    var out = [];
+    if (coachSourceEl.value === 'random') {
+      for (var i = 0; i < n; i++) out.push(pool[Math.floor(Math.random() * pool.length)].key);
+      return out;
+    }
+    state.score.forEach(function (m) {
+      m.beats.forEach(function (k) { if (k) out.push(k); });
+    });
+    if (!out.length) {
+      for (var j = 0; j < n; j++) out.push(pool[Math.floor(Math.random() * pool.length)].key);
+      return out;
+    }
+    var base = out.slice();
+    while (out.length < n) out = out.concat(base);
+    return out.slice(0, n);
+  }
+
+  function startCoach() {
+    if (playing) stopPlayback();
+    ensureCtx();
+    unlockTTS();
+    if (!ttsOK()) toast('当前浏览器不支持语音播报，将只用空拍计时');
+    coach.seq = coachSequence();
+    coach.idx = 0;
+    coach.on = true;
+    coachBtn.textContent = '⏹ 停止报读';
+    coachBtn.classList.remove('primary');
+    coachStage.classList.add('on');
+    if (hideAnswerEl.checked) coachScoreEl.classList.add('veiled');
+    nextRound();
+  }
+
+  function stopCoach(msg) {
+    coach.on = false;
+    if (coach.raf) { cancelAnimationFrame(coach.raf); coach.raf = null; }
+    try { if (TTS) TTS.cancel(); } catch (e) {}
+    coachBtn.textContent = '🎤 开始报读';
+    coachBtn.classList.add('primary');
+    coachStage.classList.remove('on');
+    coachScoreEl.classList.remove('veiled');
+    coachRound.textContent = '— / —';
+    coachWord.textContent = msg || '准备就绪';
+    coachWord.classList.remove('speak');
+    clearDots();
+  }
+
+  function nextRound() {
+    if (!coach.on) return;
+    if (coach.idx >= coach.seq.length) {
+      stopCoach('✅ 训练完成');
+      toast('报读训练完成 ✓');
+      return;
+    }
+    var p = PAT_BY_KEY[coach.seq[coach.idx]];
+    var name = p ? p.name : '空';
+    coachRound.textContent = '第 ' + (coach.idx + 1) + ' / ' + coach.seq.length + ' 轮';
+    coachWord.textContent = '🎤 ' + name;
+    coachWord.classList.add('speak');
+    var dots = coachDots.querySelectorAll('i');
+    for (var i = 0; i < dots.length; i++) dots[i].classList.remove('on');
+    speakZh(name, function () {
+      if (!coach.on) return;
+      restPhase();
+    });
+  }
+
+  // 空拍阶段：节拍器打 N 拍，玩家在这 N 拍里打出刚报的节奏型
+  function restPhase() {
+    if (!coach.on) return;
+    var beats = +restBeatsEl.value || 4;
+    var spb = 60 / state.bpm;
+    var total = beats * spb;
+    ensureCtx();
+    var t0 = audioCtx.currentTime + 0.12;
+    if (clickOn) {
+      for (var b = 0; b < beats; b++) clickSound(t0 + b * spb, b === 0);
+    }
+    coachWord.classList.remove('speak');
+    coachWord.textContent = '🥁 打 ' + beats + ' 拍';
+    var dots = coachDots.querySelectorAll('i');
+    function tick() {
+      if (!coach.on) return;
+      var el = audioCtx.currentTime - t0;
+      var cur = Math.floor(el / spb);
+      for (var i = 0; i < dots.length; i++) {
+        if (i === cur && cur < beats) dots[i].classList.add('on');
+        else dots[i].classList.remove('on');
+      }
+      if (el >= total + spb * 0.2) {
+        coach.idx++;
+        nextRound();
+        return;
+      }
+      coach.raf = requestAnimationFrame(tick);
+    }
+    tick();
+  }
 
   // ---------- 保存 / 加载 ----------
   var LS_KEY = 'rhythm_exercises_v1';
@@ -917,6 +1186,15 @@
     if (e.target.files && e.target.files[0]) importJSON(e.target.files[0]);
     e.target.value = '';
   });
+  coachBtn.addEventListener('click', function () {
+    if (coach.on) stopCoach('已停止'); else startCoach();
+  });
+  restBeatsEl.addEventListener('change', function () { renderDots(+this.value || 4); updateHint(); });
+  document.getElementById('coachToggle').addEventListener('click', function () {
+    var w = document.getElementById('coachWrap');
+    var open = w.classList.toggle('open');
+    this.textContent = (open ? '▾' : '▸') + ' 报读训练（只报中文 → 空拍跟打）';
+  });
   document.getElementById('syncBtn').addEventListener('click', openSync);
   document.getElementById('syncClose').addEventListener('click', closeSync);
   document.getElementById('gistConnect').addEventListener('click', gistConnect);
@@ -975,6 +1253,7 @@
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); randomize(); }
     else if (e.key === 'c' || e.key === 'C') { e.preventDefault(); clearAll(); }
+    else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); if (coach.on) stopCoach('已停止'); else startCoach(); }
   });
 
   // ---------- 初始化 ----------
@@ -982,6 +1261,9 @@
   renderPool();
   applyFillBeats();
   randomize();
+  renderDots(+restBeatsEl.value || 4);
+  updateHint();
+  try { TTS && TTS.getVoices && TTS.getVoices(); } catch (e) {}
   if (isBound()) gistDownload();
 })();
 </script>
